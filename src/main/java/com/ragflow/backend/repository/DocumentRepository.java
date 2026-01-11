@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface DocumentRepository extends JpaRepository<DocumentEntity, Long> {
     List<DocumentEntity> findByCollection(String collection);
+
+    DocumentEntity findFirstByCollectionAndName(String collection, String name);
 }

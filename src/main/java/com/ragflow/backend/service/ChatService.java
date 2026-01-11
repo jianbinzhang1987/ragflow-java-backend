@@ -30,6 +30,9 @@ public class ChatService {
     private final PromptBuilder promptBuilder;
     private final LLMClient llmClient;
 
+    @org.springframework.beans.factory.annotation.Value("${rag.score-threshold:0.5}")
+    private double defaultScoreThreshold;
+
     public ChatService(EmbeddingClient embeddingClient, VectorStore vectorStore, ChunkRepository chunkRepo,
             ContextBuilder contextBuilder, PromptBuilder promptBuilder, LLMClient llmClient) {
         this.embeddingClient = embeddingClient;
@@ -60,20 +63,32 @@ public class ChatService {
                 .limit(req.getTopK()) // Global topK
                 .collect(Collectors.toList());
 
-        if (req.getScoreThreshold() > 0) {
-            results = results.stream()
-                    .filter(r -> r.getScore() >= req.getScoreThreshold())
-                    .collect(Collectors.toList());
-        }
+        // Use request threshold if positive, otherwise use backend configured default
+        double threshold = req.getScoreThreshold() > 0 ? req.getScoreThreshold() : defaultScoreThreshold;
+
+        results = results.stream()
+                .filter(r -> r.getScore() >= threshold)
+                .collect(Collectors.toList());
 
         List<Long> chunkIds = results.stream().map(SearchResult::getChunkId).collect(Collectors.toList());
         List<ChunkEntity> chunks = chunkRepo.findAllById(chunkIds);
 
+        log.info("Retrieval Results for query: {}", req.getQuestion());
+        for (SearchResult res : results) {
+            String docName = (String) res.getMetadata().getOrDefault("docName", "unknown");
+            // Find KB name from chunks if possible, or print unknown
+            ChunkEntity c = chunks.stream().filter(ch -> ch.getId().equals(res.getChunkId())).findFirst().orElse(null);
+            String kbName = c != null ? c.getCollection() : "unknown";
+            log.info(" - [Score: {}] [KB: {}] [File: {}]", String.format("%.4f", res.getScore()), kbName, docName);
+        }
+
         String context = contextBuilder.buildContext(results, chunks);
 
         String prompt = promptBuilder.buildPrompt(context, req.getQuestion());
+        log.info("Sending Prompt to LLM:\n{}", prompt);
 
         String answer = llmClient.chat(prompt);
+        log.info("Received Answer from LLM:\n{}", answer);
 
         List<QueryResp.Citation> citations = new ArrayList<>();
         for (SearchResult res : results) {

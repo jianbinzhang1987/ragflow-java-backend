@@ -30,9 +30,13 @@ public class ContextBuilder {
                     .findFirst().orElse(null);
 
             if (chunk != null) {
-                if (sb.length() + chunk.getContent().length() > maxContextChars) {
+                String docName = (String) res.getMetadata().getOrDefault("docName", "unknown");
+                String sourceInfo = String.format("Source: [KB: %s] [File: %s]\n", chunk.getCollection(), docName);
+
+                if (sb.length() + sourceInfo.length() + chunk.getContent().length() > maxContextChars) {
                     break;
                 }
+                sb.append(sourceInfo);
                 sb.append(chunk.getContent()).append("\n\n");
             }
         }

@@ -50,10 +50,61 @@ public class DocService {
         this.vectorStore = vectorStore;
     }
 
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        cleanupDuplicates();
+    }
+
+    private void cleanupDuplicates() {
+        try {
+            log.info("Starting duplicate document cleanup...");
+            List<DocumentEntity> allDocs = docRepo.findAll();
+            Map<String, List<DocumentEntity>> grouped = allDocs.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(d -> d.getCollection() + "||" + d.getName()));
+
+            int deletedCount = 0;
+            for (List<DocumentEntity> group : grouped.values()) {
+                if (group.size() > 1) {
+                    // Sort by ID descending (keep latest)
+                    group.sort((a, b) -> Long.compare(b.getId(), a.getId()));
+                    // Keep first, delete rest
+                    for (int i = 1; i < group.size(); i++) {
+                        DocumentEntity toDelete = group.get(i);
+                        deleteDocPhysical(toDelete);
+                        deletedCount++;
+                    }
+                }
+            }
+            log.info("Duplicate cleanup finished. Removed {} duplicate documents.", deletedCount);
+        } catch (Exception e) {
+            log.error("Duplicate cleanup failed", e);
+        }
+    }
+
+    private void deleteDocPhysical(DocumentEntity doc) {
+        List<ChunkEntity> chunks = chunkRepo.findByDocId(doc.getId());
+        chunkRepo.deleteAll(chunks);
+        if (doc.getPath() != null && !doc.getPath().isEmpty()) {
+            try {
+                Files.deleteIfExists(Paths.get(doc.getPath()));
+            } catch (IOException e) {
+                // Ignore
+            }
+        }
+        docRepo.delete(doc);
+    }
+
     @Transactional
     public UploadResp upload(MultipartFile file, String collection) throws IOException {
-        Files.createDirectories(Paths.get(uploadDir));
         String originalFilename = file.getOriginalFilename();
+
+        // 1. Check if file already exists in this collection
+        DocumentEntity existingDoc = docRepo.findFirstByCollectionAndName(collection, originalFilename);
+        if (existingDoc != null && !".sys_init".equals(originalFilename)) {
+            throw new IllegalArgumentException("文件 [" + originalFilename + "] 已已存在于知识库中，请勿重复上传。");
+        }
+
+        Files.createDirectories(Paths.get(uploadDir));
         String storedFilename = System.currentTimeMillis() + "_" + originalFilename;
         Path targetPath = Paths.get(uploadDir, storedFilename);
 
@@ -67,6 +118,32 @@ public class DocService {
         doc.setStatus(DocumentEntity.Status.UPLOADED);
 
         doc = docRepo.save(doc);
+
+        // 2. Auto-parse (indexing) immediately
+        try {
+            // We call index() method internal logic.
+            // Note: index() is public and Transactional. Calling it from here (internal
+            // call) might bypass proxy transaction if same class.
+            // But we are already in Transactional @upload.
+            // However, to ensure separate transaction or partial commit, usually we might
+            // want separate service.
+            // But here, let's just execute the indexing logic.
+            // Since index() returns IndexResp, we can ignore it or log it.
+            log.info("Auto-indexing document: {}", doc.getId());
+            IndexResp indexResp = index(doc.getId());
+            if ("FAILED".equals(indexResp.getStatus())) {
+                log.warn("Auto-indexing failed for doc {}: {}", doc.getId(), indexResp.getError());
+                // doc status is already updated in index(), so we just return the current
+                // status
+                return new UploadResp(doc.getId(), doc.getName(), "FAILED");
+            }
+        } catch (Exception e) {
+            log.error("Auto-indexing triggers error", e);
+            return new UploadResp(doc.getId(), doc.getName(), "FAILED");
+        }
+
+        // Reload doc to get updated status
+        doc = docRepo.findById(doc.getId()).orElse(doc);
 
         return new UploadResp(doc.getId(), doc.getName(), doc.getStatus().name());
     }
