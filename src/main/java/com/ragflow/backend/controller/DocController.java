@@ -83,10 +83,19 @@ public class DocController {
         else if (name.endsWith(".json"))
             contentType = "application/json";
 
+        // Encode filename for Content-Disposition header to support Chinese characters
+        String encodedFilename;
+        try {
+            encodedFilename = java.net.URLEncoder.encode(doc.getName(), "UTF-8")
+                    .replaceAll("\\+", "%20");
+        } catch (java.io.UnsupportedEncodingException e) {
+            encodedFilename = doc.getName();
+        }
+
         return org.springframework.http.ResponseEntity.ok()
                 .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"" + doc.getName() + "\"")
+                        "inline; filename*=UTF-8''" + encodedFilename)
                 .body(resource);
     }
 }

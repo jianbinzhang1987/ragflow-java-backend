@@ -49,3 +49,12 @@ logging:
     org.apache.pdfbox.pdmodel.font: ERROR
     org.apache.fontbox: ERROR
     org.apache.pdfbox: WARN
+
+# Web Search Fallback Configuration
+# When knowledge base has no relevant results, fallback to web search
+websearch:
+  enabled: false  # Set to true to enable web search fallback
+  fallback-enabled: true  # Allow fallback when KB is empty
+  provider: brave  # brave, serpapi, or generic
+  api-url: https://api.search.brave.com/res/v1/web/search
+  api-key: ${WEBSEARCH_API_KEY:}

@@ -5,9 +5,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class PromptBuilder {
 
-    private static final String TEMPLATE = """
+    private static final String TEMPLATE_WITH_CONTEXT = """
             You are a helpful assistant. Use the following pieces of context to answer the question at the end.
-            If you don't know the answer, just say that you don't know, don't try to make up an answer.
+            If the context doesn't contain enough information, use your own knowledge to provide a helpful answer.
 
             Context:
             %s
@@ -17,7 +17,35 @@ public class PromptBuilder {
             Answer:
             """;
 
+    private static final String TEMPLATE_WITH_WEB_SEARCH = """
+            You are a helpful assistant. The following information was retrieved from web search results.
+            Use this information to answer the question. Please cite the source URLs in your answer.
+
+            Web Search Results:
+            %s
+
+            Question: %s
+
+            Please provide a comprehensive answer based on the search results above. Include source citations in the format [Source: URL].
+            Answer:
+            """;
+
+    private static final String TEMPLATE_NO_CONTEXT = """
+            You are a helpful assistant. Answer the following question based on your knowledge.
+
+            Question: %s
+
+            Answer:
+            """;
+
     public String buildPrompt(String context, String question) {
-        return String.format(TEMPLATE, context, question);
+        if (context == null || context.trim().isEmpty()) {
+            return String.format(TEMPLATE_NO_CONTEXT, question);
+        }
+        return String.format(TEMPLATE_WITH_CONTEXT, context, question);
+    }
+
+    public String buildWebSearchPrompt(String webContext, String question) {
+        return String.format(TEMPLATE_WITH_WEB_SEARCH, webContext, question);
     }
 }

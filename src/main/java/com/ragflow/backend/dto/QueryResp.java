@@ -5,6 +5,7 @@ import java.util.List;
 public class QueryResp {
     private String answer;
     private List<Citation> citations;
+    private String sourceType = "knowledge_base"; // knowledge_base, web_search, llm_knowledge
 
     public QueryResp() {
     }
@@ -28,6 +29,14 @@ public class QueryResp {
 
     public void setCitations(List<Citation> citations) {
         this.citations = citations;
+    }
+
+    public String getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(String sourceType) {
+        this.sourceType = sourceType;
     }
 
     public static class Citation {
