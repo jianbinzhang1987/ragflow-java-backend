@@ -183,4 +183,111 @@ public class ChatService {
         List<Long> chunkIds = results.stream().map(SearchResult::getChunkId).collect(Collectors.toList());
         return chunkRepo.findAllById(chunkIds);
     }
+
+    public void queryStream(QueryReq req, org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter) {
+        new Thread(() -> {
+            try {
+                List<ChunkEntity> chunks = new ArrayList<>();
+                List<SearchResult> results = new ArrayList<>();
+                boolean kbSearchFailed = false;
+                String sourceType = "knowledge_base";
+
+                // Send initial metadata
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("start")
+                        .data("{\"status\":\"retrieving\"}"));
+
+                // Try knowledge base search first
+                try {
+                    float[] queryVec = embeddingClient.embed(req.getQuestion());
+
+                    List<String> targetCollections = new ArrayList<>();
+                    if (req.getCollectionIds() != null) {
+                        targetCollections.addAll(req.getCollectionIds());
+                    } else if (req.getCollection() != null && !req.getCollection().isEmpty()) {
+                        targetCollections.add(req.getCollection());
+                    }
+
+                    List<SearchResult> allResults = new ArrayList<>();
+                    for (String collection : targetCollections) {
+                        allResults.addAll(vectorStore.search(collection, queryVec, req.getTopK()));
+                    }
+
+                    results = allResults.stream()
+                            .sorted((a, b) -> Double.compare(b.getScore(), a.getScore()))
+                            .limit(req.getTopK())
+                            .collect(Collectors.toList());
+
+                    double threshold = req.getScoreThreshold() > 0 ? req.getScoreThreshold() : defaultScoreThreshold;
+
+                    results = results.stream()
+                            .filter(r -> r.getScore() >= threshold)
+                            .collect(Collectors.toList());
+
+                    List<Long> chunkIds = results.stream().map(SearchResult::getChunkId).collect(Collectors.toList());
+                    chunks = chunkRepo.findAllById(chunkIds);
+
+                    log.info("Retrieval Results for query: {}", req.getQuestion());
+                    for (SearchResult res : results) {
+                        String docName = (String) res.getMetadata().getOrDefault("docName", "unknown");
+                        ChunkEntity c = chunks.stream().filter(ch -> ch.getId().equals(res.getChunkId())).findFirst()
+                                .orElse(null);
+                        String kbName = c != null ? c.getCollection() : "unknown";
+                        log.info(" - [Score: {}] [KB: {}] [File: {}]", String.format("%.4f", res.getScore()), kbName,
+                                docName);
+                    }
+                } catch (Exception e) {
+                    log.error("Knowledge base search failed: {}", e.getMessage());
+                    kbSearchFailed = true;
+                }
+
+                // Build prompt
+                String prompt;
+                if (!chunks.isEmpty() && !kbSearchFailed) {
+                    String context = contextBuilder.buildContext(results, chunks);
+                    prompt = promptBuilder.buildPrompt(context, req.getQuestion());
+                    log.info("Sending Prompt to LLM (KB context - stream)");
+                } else if (webSearchFallbackEnabled && webSearchService.isEnabled()) {
+                    log.info("No KB results found or KB search failed, falling back to web search...");
+                    sourceType = "web_search";
+
+                    List<WebSearchService.SearchResultItem> webResults = webSearchService.search(req.getQuestion(), 5);
+                    if (!webResults.isEmpty()) {
+                        StringBuilder webContext = new StringBuilder();
+                        for (int i = 0; i < webResults.size(); i++) {
+                            WebSearchService.SearchResultItem item = webResults.get(i);
+                            webContext.append(String.format("[%d] %s\nURL: %s\n%s\n\n",
+                                    i + 1, item.getTitle(), item.getUrl(), item.getSnippet()));
+                        }
+                        prompt = promptBuilder.buildWebSearchPrompt(webContext.toString(), req.getQuestion());
+                    } else {
+                        sourceType = "llm_knowledge";
+                        prompt = promptBuilder.buildPrompt("", req.getQuestion());
+                    }
+                } else {
+                    sourceType = "llm_knowledge";
+                    prompt = promptBuilder.buildPrompt("", req.getQuestion());
+                }
+
+                // Send source type
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("source")
+                        .data("{\"type\":\"" + sourceType + "\"}"));
+
+                // Stream LLM response
+                llmClient.chatStream(prompt, emitter);
+
+            } catch (Exception e) {
+                log.error("Stream query failed", e);
+                try {
+                    emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("error")
+                            .data("Error: " + e.getMessage()));
+                    emitter.complete();
+                } catch (Exception ex) {
+                    emitter.completeWithError(ex);
+                }
+            }
+        }).start();
+    }
 }

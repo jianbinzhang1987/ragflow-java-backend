@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -25,6 +26,13 @@ public class ChatController {
     @PostMapping("/chat/query")
     public ApiResponse<QueryResp> query(@RequestBody QueryReq req) {
         return ApiResponse.success(chatService.query(req));
+    }
+
+    @PostMapping("/chat/stream")
+    public SseEmitter stream(@RequestBody QueryReq req) {
+        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+        chatService.queryStream(req, emitter);
+        return emitter;
     }
 
     @PostMapping("/search")
