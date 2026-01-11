@@ -47,9 +47,9 @@ public class ChatService {
         float[] queryVec = embeddingClient.embed(req.getQuestion());
 
         List<String> targetCollections = new ArrayList<>();
-        if (req.getCollectionIds() != null && !req.getCollectionIds().isEmpty()) {
+        if (req.getCollectionIds() != null) {
             targetCollections.addAll(req.getCollectionIds());
-        } else {
+        } else if (req.getCollection() != null && !req.getCollection().isEmpty()) {
             targetCollections.add(req.getCollection());
         }
 

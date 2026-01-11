@@ -32,9 +32,11 @@ public class DocController {
     }
 
     @GetMapping("/list")
-    public ApiResponse<List<com.ragflow.backend.entity.DocumentEntity>> list(
-            @RequestParam(value = "collection", defaultValue = "default") String collection) {
-        return ApiResponse.success(docService.list(collection));
+    public ApiResponse<com.ragflow.backend.dto.PageResp<com.ragflow.backend.entity.DocumentEntity>> list(
+            @RequestParam(value = "collection", defaultValue = "default") String collection,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
+        return ApiResponse.success(docService.list(collection, page, size));
     }
 
     @GetMapping("/collections")
@@ -52,5 +54,39 @@ public class DocController {
     public ApiResponse<Void> deleteKb(@RequestParam("name") String name) {
         docService.deleteCollection(name);
         return ApiResponse.success(null);
+    }
+
+    @GetMapping("/{docId}/preview")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> preview(
+            @PathVariable Long docId) {
+        org.springframework.core.io.Resource resource = docService.loadFileAsResource(docId);
+        com.ragflow.backend.entity.DocumentEntity doc = docService.getDoc(docId);
+
+        String contentType = "application/octet-stream";
+        String name = doc.getName().toLowerCase();
+        if (name.endsWith(".pdf"))
+            contentType = "application/pdf";
+        else if (name.endsWith(".png"))
+            contentType = "image/png";
+        else if (name.endsWith(".jpg") || name.endsWith(".jpeg"))
+            contentType = "image/jpeg";
+        else if (name.endsWith(".txt"))
+            contentType = "text/plain";
+        else if (name.endsWith(".md"))
+            contentType = "text/markdown";
+        else if (name.endsWith(".html"))
+            contentType = "text/html";
+        else if (name.endsWith(".css"))
+            contentType = "text/css";
+        else if (name.endsWith(".js"))
+            contentType = "application/javascript";
+        else if (name.endsWith(".json"))
+            contentType = "application/json";
+
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + doc.getName() + "\"")
+                .body(resource);
     }
 }

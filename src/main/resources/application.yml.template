@@ -43,3 +43,9 @@ llm:
   api-key: ${LLM_API_KEY:your_api_key_here}
   model: glm-4.5-Air
   temperature: 0.7
+
+logging:
+  level:
+    org.apache.pdfbox.pdmodel.font: ERROR
+    org.apache.fontbox: ERROR
+    org.apache.pdfbox: WARN

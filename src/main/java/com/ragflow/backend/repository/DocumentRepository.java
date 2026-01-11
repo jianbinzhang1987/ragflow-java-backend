@@ -11,4 +11,7 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, Long> 
     List<DocumentEntity> findByCollection(String collection);
 
     DocumentEntity findFirstByCollectionAndName(String collection, String name);
+
+    org.springframework.data.domain.Page<DocumentEntity> findByCollection(String collection,
+            org.springframework.data.domain.Pageable pageable);
 }

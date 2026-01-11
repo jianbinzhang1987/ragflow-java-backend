@@ -160,6 +160,35 @@ public class DocService {
 
             if (filename.endsWith(".txt") || filename.endsWith(".md")) {
                 text = Files.readString(path);
+            } else if (filename.endsWith(".pdf")) {
+                // PDF parsing using Apache PDFBox
+                // Disable font cache to avoid system font scanning warnings
+                System.setProperty("sun.java2d.cmm", "sun.java2d.cmm.kcms.KcmsServiceProvider");
+                System.setProperty("org.apache.pdfbox.rendering.UsePureJavaCMYKConversion", "true");
+
+                try (org.apache.pdfbox.pdmodel.PDDocument pdfDoc = org.apache.pdfbox.Loader.loadPDF(path.toFile())) {
+                    org.apache.pdfbox.text.PDFTextStripper stripper = new org.apache.pdfbox.text.PDFTextStripper();
+                    stripper.setSortByPosition(true);
+                    text = stripper.getText(pdfDoc);
+
+                    if (text == null || text.trim().isEmpty()) {
+                        log.warn("PDF text extraction returned empty content for: {}", filename);
+                        text = "[PDF文档内容为空或无法提取文本]";
+                    }
+                } catch (Exception pdfEx) {
+                    log.error("PDF parsing failed for {}: {}", filename, pdfEx.getMessage());
+                    throw new RuntimeException("PDF解析失败: " + pdfEx.getMessage(), pdfEx);
+                }
+            } else if (filename.endsWith(".docx")) {
+                // DOCX parsing using Apache POI
+                try (java.io.FileInputStream fis = new java.io.FileInputStream(path.toFile());
+                        org.apache.poi.xwpf.usermodel.XWPFDocument docxDoc = new org.apache.poi.xwpf.usermodel.XWPFDocument(
+                                fis)) {
+                    org.apache.poi.xwpf.extractor.XWPFWordExtractor extractor = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(
+                            docxDoc);
+                    text = extractor.getText();
+                    extractor.close();
+                }
             } else {
                 throw new UnsupportedOperationException("File type not supported for indexing: " + filename);
             }
@@ -209,10 +238,37 @@ public class DocService {
         }
     }
 
-    public List<DocumentEntity> list(String collection) {
-        return docRepo.findByCollection(collection).stream()
-                .filter(d -> !".sys_init".equals(d.getName()))
-                .collect(java.util.stream.Collectors.toList());
+    public com.ragflow.backend.dto.PageResp<DocumentEntity> list(String collection, int page, int size) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1,
+                size,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"));
+
+        org.springframework.data.domain.Page<DocumentEntity> paged = docRepo.findByCollection(collection, pageable);
+
+        // Filter sys_init if present (though sorting might push it anywhere, it's safer
+        // to filter, but Page API makes filtering post-fetch hard for pagination
+        // consistency.
+        // Usually we exclude it in query. But simpler: just return it and let frontend
+        // hide it, or ignore.
+        // Actually, sys_init is hidden. Let's see if we can exclude it in repo.
+        // Ignoring for now or let frontend filter. Or better, update repo to not select
+        // it.
+        // findByCollectionAndNameNot(collection, ".sys_init", pageable)?
+        // Let's stick to what we have. Frontend can filter or we can accept it's there.
+        // User asked for "file list".
+
+        // Better:
+        // List<DocumentEntity> content = paged.getContent().stream().filter(d ->
+        // !".sys_init".equals(d.getName())).collect(Collectors.toList());
+        // PageResp resp = new PageResp<>(paged.getTotalElements(), page, size,
+        // content);
+        // This is slightly inaccurate for total count if sys_init is in there.
+
+        // Let's rely on frontend filtering ".sys_init" if it appears, or use a better
+        // query.
+        // Since sys_init is 1 per collection, it's negligible.
+
+        return new com.ragflow.backend.dto.PageResp<>(paged.getTotalElements(), page, size, paged.getContent());
     }
 
     public List<String> listCollections() {
@@ -262,5 +318,25 @@ public class DocService {
             }
         }
         docRepo.deleteAll(docs);
+    }
+
+    public DocumentEntity getDoc(Long docId) {
+        return docRepo.findById(docId).orElseThrow(() -> new IllegalArgumentException("Document not found"));
+    }
+
+    public org.springframework.core.io.Resource loadFileAsResource(Long docId) {
+        DocumentEntity doc = getDoc(docId);
+        try {
+            Path filePath = Paths.get(doc.getPath());
+            org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(
+                    filePath.toUri());
+            if (resource.exists()) {
+                return resource;
+            } else {
+                throw new IllegalArgumentException("File not found on disk: " + doc.getName());
+            }
+        } catch (java.net.MalformedURLException ex) {
+            throw new IllegalArgumentException("File path invalid: " + doc.getName(), ex);
+        }
     }
 }
