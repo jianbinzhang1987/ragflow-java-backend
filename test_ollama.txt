@@ -1,0 +1,1 @@
+RAGFlow supports many Embedding Models via OpenAI API.

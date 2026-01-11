@@ -1,0 +1,45 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: ragflow-java-backend
+  datasource:
+    url: jdbc:h2:file:./data/db/ragflow;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driverClassName: org.h2.Driver
+    username: sa
+    password: 
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+storage:
+  upload-dir: ./data/uploads
+  index-dir: ./data/index
+
+rag:
+  chunk-size: 800
+  chunk-overlap: 120
+  max-context-chars: 4000
+  top-k: 5
+  score-threshold: 0.5
+
+embedding:
+  provider: openai # mock or openai
+  base-url: http://localhost:11434/v1 
+  api-key: 
+  model: nomic-embed-text
+  dimension: 768
+
+llm:
+  provider: openai # mock or openai
+  base-url: https://open.bigmodel.cn/api/paas/v4/
+  api-key: 77e9f9a18f4f478ebd7e001933e60e98.MFwhwy4GrcFXVW9Y
+  model: glm-4.5-Air
+  temperature: 0.7

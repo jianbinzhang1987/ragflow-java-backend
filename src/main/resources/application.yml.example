@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/db/ragflow;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: 
+  h2:
+    console:
+      enabled: true
+
+storage:
+  upload-dir: ./data/uploads
+  index-dir: ./data/index
+
+rag:
+  chunk-size: 800
+  chunk-overlap: 120
+  max-context-chars: 4000
+  top-k: 5
+
+embedding:
+  provider: openai
+  base-url: https://api.openai.com/v1
+  api-key: your-api-key-here
+  model: text-embedding-3-small
+  dimension: 1536
+
+llm:
+  provider: openai
+  base-url: https://api.openai.com/v1
+  api-key: your-api-key-here
+  model: gpt-3.5-turbo
+  temperature: 0.7
