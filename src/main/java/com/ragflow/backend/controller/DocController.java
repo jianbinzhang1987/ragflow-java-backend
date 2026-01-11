@@ -41,4 +41,16 @@ public class DocController {
     public ApiResponse<List<String>> listCollections() {
         return ApiResponse.success(docService.listCollections());
     }
+
+    @PostMapping("/kb")
+    public ApiResponse<Void> createKb(@RequestParam("name") String name) {
+        docService.createCollection(name);
+        return ApiResponse.success(null);
+    }
+
+    @DeleteMapping("/kb")
+    public ApiResponse<Void> deleteKb(@RequestParam("name") String name) {
+        docService.deleteCollection(name);
+        return ApiResponse.success(null);
+    }
 }

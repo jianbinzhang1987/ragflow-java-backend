@@ -37,4 +37,14 @@ public class QueryReq {
     public void setScoreThreshold(double scoreThreshold) {
         this.scoreThreshold = scoreThreshold;
     }
+
+    private java.util.List<String> collectionIds;
+
+    public java.util.List<String> getCollectionIds() {
+        return collectionIds;
+    }
+
+    public void setCollectionIds(java.util.List<String> collectionIds) {
+        this.collectionIds = collectionIds;
+    }
 }

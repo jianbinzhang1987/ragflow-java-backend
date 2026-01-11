@@ -133,7 +133,9 @@ public class DocService {
     }
 
     public List<DocumentEntity> list(String collection) {
-        return docRepo.findByCollection(collection);
+        return docRepo.findByCollection(collection).stream()
+                .filter(d -> !".sys_init".equals(d.getName()))
+                .collect(java.util.stream.Collectors.toList());
     }
 
     public List<String> listCollections() {
@@ -141,5 +143,47 @@ public class DocService {
                 .map(DocumentEntity::getCollection)
                 .distinct()
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    @Transactional
+    public void createCollection(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Collection name cannot be empty");
+        }
+        // Check if exists? Not strictly necessary as we just want to ensure it appears
+        // in listCollections
+        // Create a hidden system document to hold the collection
+        DocumentEntity doc = new DocumentEntity();
+        doc.setCollection(name);
+        doc.setName(".sys_init");
+        doc.setPath(""); // No file
+        doc.setStatus(DocumentEntity.Status.INDEXED); // Mark as ready so it doesn't look weird, though it's hidden
+        doc.setSize(0L);
+        docRepo.save(doc);
+    }
+
+    @Transactional
+    public void deleteCollection(String name) {
+        if ("default".equals(name)) {
+            throw new IllegalArgumentException("Cannot delete default collection");
+        }
+        List<DocumentEntity> docs = docRepo.findByCollection(name);
+
+        // Logical delete or physical delete?
+        // Physical delete for now to clean up
+        for (DocumentEntity doc : docs) {
+            // Remove chunks
+            List<ChunkEntity> chunks = chunkRepo.findByDocId(doc.getId());
+            chunkRepo.deleteAll(chunks);
+            // Delete file if exists
+            if (doc.getPath() != null && !doc.getPath().isEmpty()) {
+                try {
+                    Files.deleteIfExists(Paths.get(doc.getPath()));
+                } catch (IOException e) {
+                    log.warn("Failed to delete file: " + doc.getPath(), e);
+                }
+            }
+        }
+        docRepo.deleteAll(docs);
     }
 }

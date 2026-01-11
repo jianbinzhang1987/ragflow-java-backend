@@ -43,7 +43,22 @@ public class ChatService {
     public QueryResp query(QueryReq req) {
         float[] queryVec = embeddingClient.embed(req.getQuestion());
 
-        List<SearchResult> results = vectorStore.search(req.getCollection(), queryVec, req.getTopK());
+        List<String> targetCollections = new ArrayList<>();
+        if (req.getCollectionIds() != null && !req.getCollectionIds().isEmpty()) {
+            targetCollections.addAll(req.getCollectionIds());
+        } else {
+            targetCollections.add(req.getCollection());
+        }
+
+        List<SearchResult> allResults = new ArrayList<>();
+        for (String collection : targetCollections) {
+            allResults.addAll(vectorStore.search(collection, queryVec, req.getTopK()));
+        }
+
+        List<SearchResult> results = allResults.stream()
+                .sorted((a, b) -> Double.compare(b.getScore(), a.getScore())) // Global sort
+                .limit(req.getTopK()) // Global topK
+                .collect(Collectors.toList());
 
         if (req.getScoreThreshold() > 0) {
             results = results.stream()
