@@ -243,7 +243,8 @@ public class DocService {
                 size,
                 org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"));
 
-        org.springframework.data.domain.Page<DocumentEntity> paged = docRepo.findByCollection(collection, pageable);
+        org.springframework.data.domain.Page<DocumentEntity> paged = docRepo.findByCollectionAndNameNot(collection,
+                ".sys_init", pageable);
 
         // Filter sys_init if present (though sorting might push it anywhere, it's safer
         // to filter, but Page API makes filtering post-fetch hard for pagination
